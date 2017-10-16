@@ -3,7 +3,11 @@
             [clojure.tools.logging :as log]
             [integrant.core :as ig]
             [zookareg.state :as state]
-            [zookareg.utils :as ut]))
+            [zookareg.utils :as ut])
+  (:import (kafka.admin AdminUtils RackAwareMode$Enforced$)
+           (kafka.utils ZKStringSerializer$ ZkUtils)
+           (org.I0Itec.zkclient ZkClient ZkConnection)
+           (java.util Properties)))
 
 (def default-config
   {:ports        {:kafka           9092
@@ -15,6 +19,29 @@
   {:ports {:kafka           kafka
            :zookeeper       zookeeper
            :schema-registry schema-registry}})
+
+(defn- wait-for-topic!
+  [^ZkUtils zu topic]
+  (deref
+    (future
+      (loop [exists? false]
+        (when (not exists?)
+          (do (Thread/sleep 100)
+              (recur (AdminUtils/topicExists zu topic))))))
+    2000 (log/warn (str "Topic " topic " was not created after 2s."))))
+
+(defn- create-topics
+  [topics port]
+  (let [host (str "localhost:" port)]
+    (with-open [zk (ZkClient. host 1000 1000 (ZKStringSerializer$/MODULE$))]
+      (let [zu (ZkUtils. zk (ZkConnection. host) false)]
+        (doseq [topic topics]
+          (let [topic-name (if (string? topic) topic (:name topic))]
+            (AdminUtils/createTopic zu topic-name
+                                    (or (:partitions topic) 1)
+                                    (or (:replication-factor topic) 1)
+                                    (Properties.) (RackAwareMode$Enforced$.))
+            (wait-for-topic! zu topic-name)))))))
 
 (defn ->available-ports-config []
   (merge default-config
@@ -45,7 +72,7 @@
 
 (defn init-zookareg
   ([] (init-zookareg default-config))
-  ([config]
+  ([{:keys [topics] :as config}]
    (let [ig-config (->ig-config config)
          config-pp (with-out-str (pprint/pprint config))]
      (log/info "starting ZooKaReg with config:" config-pp)
@@ -56,6 +83,10 @@
        (reset! state/state
                {:system (ig/init ig-config)
                 :config ig-config})
+
+       (when-not (empty? topics)
+         (create-topics topics (get-in config [:ports :zookeeper])))
+
        (catch clojure.lang.ExceptionInfo ex
          ;; NOTE tears down partially initialised system
          (ig/halt! (:system (ex-data ex)))

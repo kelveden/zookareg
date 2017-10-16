@@ -58,6 +58,10 @@ Embedded **Zo**okeeper **Ka**fka and Confluent's Schema **Reg**istry.
 
 ;; Random-ish available ports:
 (init-zookareg (->available-ports-config))
+
+;; Initialise with topics ready to go:
+(init-zookareg (merge (zookareg.core/default-config)
+                      {:topics ["topic1" {:name "topic2" :partitions 2 :replication-factor 1}]}))
 ```
 
 Happy testing!

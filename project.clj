@@ -19,6 +19,8 @@
                                org.apache.kafka/kafka_2.11]]
                  [org.apache.kafka/kafka_2.11 "0.11.0.1"
                   :exclusions [org.apache.zookeeper/zookeeper]]
-                 [org.apache.curator/curator-test "4.0.0"]]
+                 [org.apache.curator/curator-test "4.0.0"]
+
+                 [com.101tec/zkclient "0.10"]]
 
   :exclusions [[org.slf4j/slf4j-log4j12]])
